@@ -19,10 +19,11 @@ namespace PPTASchedulerForm
     {
         DataTable table = new DataTable();
         System.Text.RegularExpressions.Regex rg = new Regex(@"[a-zA-Z]");
+        TimeSpan EVENT_END_TIME = TimeSpan.Parse("16:30:00");
 
         const string STUDENT_PERFORMANCE_QUERY = @"select studentperformance.student_id as student_id,theory, student.first_name as first_name, student.last_name as last_name, performance, preferred_start, preferred_end,teacher.teacher_id as teacher_id, code 
                                                 from studentperformance, teacher, student
-                                                where(student.student_id = studentperformance.student_id) and (student.teacher_id = teacher.teacher_id) and (studentperformance.theory is not null or studentperformance.performance is not null)"; // and (student.last_name='QUIRK' || student.last_name='AGARA' || student.last_name='DIYANNI' || student.last_name='ASTI')";
+                                                where(student.student_id = studentperformance.student_id) and (student.teacher_id = teacher.teacher_id) and (studentperformance.theory is not null or studentperformance.performance is not null) and studentperformance.student_id = 248 order by performance, theory asc"; // and (student.last_name='QUIRK' || student.last_name='AGARA' || student.last_name='DIYANNI' || student.last_name='ASTI')";
 
         public SchedulerForm()
         {
@@ -244,19 +245,23 @@ namespace PPTASchedulerForm
             return endTime;
         }
 
-        private bool AssignJudge(Student student, IEnumerator<Teacher> judgeEnumerator, List<Student> siblings)
+        private bool AssignJudge(Student student, List<Teacher> judges, List<Student> siblings)
         {
             bool isScheduled = false;
 
-            while (judgeEnumerator.MoveNext())
+            foreach (Teacher currentJudge in judges)
             {
-                Teacher currentJudge = judgeEnumerator.Current;
-
+               
                 student.ScheduledStartTime = student.StudentPreferredStartTime;
+
+                if(currentJudge.ID.Equals(student.Teacher.ID))
+                {
+                    continue;
+                }
 
                 while (!isScheduled)
                 {
-                    
+
                     //Check whether the judge is available to judge based on students preferred start time
                     if (TimeSpan.Compare(currentJudge.JudgeAvailabilityStartTime, student.ScheduledStartTime) > 0)
                     {
@@ -268,14 +273,20 @@ namespace PPTASchedulerForm
                     {
                         break;
                     }
-
-                    TimeSpan endTime = computeEndTime(student);
+                 
                     TimeSpan startTime = student.ScheduledStartTime;
+                    TimeSpan endTime = computeEndTime(student);
+
+                    if (endTime > EVENT_END_TIME)
+                    {
+                        break;
+                    }
 
                     bool available = isAvailable(student, currentJudge, startTime, endTime);
                     bool breakTime = true;
 
-                    if (available) {
+                    if (available)
+                    {
                         breakTime = isBreakTime(currentJudge, student, startTime, endTime);
                     }
 
@@ -302,7 +313,7 @@ namespace PPTASchedulerForm
                     }
                 }
 
-                if(isScheduled) { break;  }
+                if (isScheduled) { break; }
 
             }
 
@@ -351,10 +362,10 @@ namespace PPTASchedulerForm
                      Student currentStudent = studentsEnumerator.Current;
 
                     //Filter the judge based on the current student
-                    IEnumerable<Teacher> judgeList = judges.Where(j => j.ID != currentStudent.Teacher.ID);                    
-                    IEnumerator<Teacher> judgeEnumerator = judgeList.GetEnumerator();
+                    //IEnumerable<Teacher> judgeList = judges.Where(j => j.ID != currentStudent.Teacher.ID);                    
+                    //IEnumerator<Teacher> judgeEnumerator = judgeList.GetEnumerator();
 
-                    this.AssignJudge(currentStudent, judgeEnumerator, null);
+                    this.AssignJudge(currentStudent, judges, null);
 
                  }
              } 
