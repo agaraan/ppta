@@ -29,11 +29,11 @@ namespace PPTASchedulerForm
             InitializeComponent();
         }
 
-        private bool isBreakTime(Teacher judge, TimeSpan endTime)
+        private bool isBreakTime(Teacher judge, Student student, TimeSpan startTime, TimeSpan endTime)
         {
             bool retValue = true;
-            TimeSpan startTime = judge.JudgeAvailabilityStartTime;
-       
+
+          
             StringBuilder sb = new StringBuilder("SELECT judge_id, break_time_start, break_time_end from judge_break ");
             sb.AppendFormat("WHERE judge_id={0}", judge.ID);
 
@@ -50,11 +50,12 @@ namespace PPTASchedulerForm
                 foreach (DataRow row in dtJudgeAvailability.Rows)
                 {
 
-                    TimeSpan break_time_start = TimeSpan.Parse(row["break_time_start"].ToString());
-                    TimeSpan break_time_end = TimeSpan.Parse(row["break_time_end"].ToString());
+                    TimeSpan judge_break_start = TimeSpan.Parse(row["break_time_start"].ToString());
+                    TimeSpan judge_break_end = TimeSpan.Parse(row["break_time_end"].ToString());
 
-                    if ((startTime > break_time_start) && (startTime < break_time_end))
-                    {
+                    bool overlap = startTime < judge_break_end && judge_break_start < endTime;
+
+                    if(overlap) { 
                         retValue = true;
                         break;
                     }
@@ -75,33 +76,32 @@ namespace PPTASchedulerForm
 
             int student_id = student.ID;
             int teacher_id = currentJudge.ID;
-                
-            StringBuilder sb = new StringBuilder("SELECT student_id, teacher_id, start_time, end_time from performance_schedule ");
-            sb.AppendFormat("WHERE (teacher_id={0} and start_time='{1}')", teacher_id, startTime);
+           
+
+            StringBuilder sb = new StringBuilder("SELECT teacher_id, start_time, end_time from performance_schedule ");
+            sb.AppendFormat("WHERE (teacher_id={0})", teacher_id);
 
             DataTable dtAvailable = DBMySQLUtils.ExecuteStatement(sb.ToString());
 
-            if (dtAvailable != null)
-            {
-                if(dtAvailable.Rows.Count > 0)
-                {
-                    retValue = false;
-                }
-            }
-
-           /* foreach (DataRow row in dtAvailable.Rows)
+            foreach (DataRow row in dtAvailable.Rows)
             {
 
-                TimeSpan judge_start_time = TimeSpan.Parse(row["start_time"].ToString());
-               // TimeSpan judge_end_time = TimeSpan.Parse(row["end_time"].ToString());
+                TimeSpan judging_start_time = TimeSpan.Parse(row["start_time"].ToString());
+                TimeSpan judging_end_time = TimeSpan.Parse(row["end_time"].ToString());
 
-                if ((startTime > judge_start_time) || endTime < currentJudge.JudgeAvailabilityEndTime)
+                bool overlap = startTime < judging_end_time && judging_start_time < endTime;
+
+                if (overlap)
                 {
                     retValue = false;
                     break;
                 }
+                else
+                {
+                    retValue = true;
+                }
 
-            }*/
+            }
 
             return retValue;
         }
@@ -115,77 +115,6 @@ namespace PPTASchedulerForm
             DataTable dtLastName = DBMySQLUtils.ExecuteStatement(sql);
 
             return dtLastName;
-        }
-
-        private TimeSpan computeEndTime(TimeSpan startTime, string theory, string performance)
-        {
-            TimeSpan endTime = startTime;
-
-            string student_level = "";
-
-            
-            if (performance != null)
-                student_level = performance;
-            else if (theory != null)
-                student_level = theory;
-
-            switch(student_level)
-            {
-                case "1A":
-                case "1B":
-                case "1C":
-                case "2":
-                    endTime = startTime.Add(new TimeSpan(0, 15, 0));
-                break;
-                case "3":
-                case "4":
-                case "5":
-                case "6":
-                    if(theory != null && performance != null)
-                        endTime = startTime.Add(new TimeSpan(0, 30, 0));
-                    else
-                        endTime = startTime.Add(new TimeSpan(0, 15, 0));
-                    break;
-               case "7":
-               case "8":
-               case "9":
-               case "10":
-                    if (theory != null && performance != null)
-                        endTime = startTime.Add(new TimeSpan(0, 60, 0));
-                    else
-                        endTime = startTime.Add(new TimeSpan(0, 30, 0));
-                    break;
-            }
-
-            return endTime;
-        }
-
-        private bool ScheduleJudge(string student_id, string theory, string performance, string teacher_id, TimeSpan startTime, TimeSpan endTime)
-        {
-            /* bool searchJudge = true;
-             bool isScheduled = false;
-
-             while (searchJudge)
-             {
-                 TimeSpan computedEndTime = computeEndTime(startTime, theory, performance);
-                 bool available = isAvailable(student_id, teacher_id, startTime, computedEndTime);
-                 bool breakTime = isBreakTime(teacher_id, startTime, computedEndTime);
-
-                 if (available && !breakTime)
-                 {
-                     searchJudge = false;
-                     isScheduled = true;
-                     break;
-                 }
-                 else
-                 {
-                     startTime = startTime.Add(new TimeSpan(0, 15, 0));
-                 }
-             }
-
-             return isScheduled; */
-            return false;
-
         }
 
         private void ExctractStudentPerformanceLevel(string theory, string performance)
@@ -280,7 +209,7 @@ namespace PPTASchedulerForm
             return judges;
         }
 
-        private TimeSpan computeEndTime1(Student student)
+        private TimeSpan computeEndTime(Student student)
         {
             TimeSpan endTime = TimeSpan.Zero;
 
@@ -340,14 +269,14 @@ namespace PPTASchedulerForm
                         break;
                     }
 
-                    TimeSpan endTime = computeEndTime1(student);
+                    TimeSpan endTime = computeEndTime(student);
                     TimeSpan startTime = student.ScheduledStartTime;
 
                     bool available = isAvailable(student, currentJudge, startTime, endTime);
                     bool breakTime = true;
 
                     if (available) {
-                        breakTime = isBreakTime(currentJudge, endTime);
+                        breakTime = isBreakTime(currentJudge, student, startTime, endTime);
                     }
 
                     if (available && !breakTime)
@@ -410,12 +339,11 @@ namespace PPTASchedulerForm
              while (enumerator.MoveNext())
              {
                  string last_name = enumerator.Current;
-
-                 //IEnumerable<Student> currentStudents = performanceStudents.Where(student => performanceStudents.Any(st => st.LastName.ToUpper().Equals(last_name.ToUpper())));
                 
                 IEnumerable<Student> currentStudents = performanceStudents.Where(student => student.LastName.ToUpper().Equals(last_name.ToUpper()));
                 IEnumerator<Student> studentsEnumerator = currentStudents.GetEnumerator();
                 int lastNameCount1 = currentStudents.OfType<Student>().Count();
+
                 //  List<Student> siblings = GetSiblingsList(currentStudents);
                 while (studentsEnumerator.MoveNext())
                  {
