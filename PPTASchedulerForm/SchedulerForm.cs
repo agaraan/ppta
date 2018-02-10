@@ -23,7 +23,7 @@ namespace PPTASchedulerForm
 
         const string STUDENT_PERFORMANCE_QUERY = @"select studentperformance.student_id as student_id,theory, student.first_name as first_name, student.last_name as last_name, performance, preferred_start, preferred_end,teacher.teacher_id as teacher_id, code 
                                                 from studentperformance, teacher, student
-                                                where(student.student_id = studentperformance.student_id) and (student.teacher_id = teacher.teacher_id) and (studentperformance.theory is not null or studentperformance.performance is not null) and studentperformance.student_id = 248 order by performance, theory asc"; // and (student.last_name='QUIRK' || student.last_name='AGARA' || student.last_name='DIYANNI' || student.last_name='ASTI')";
+                                                where(student.student_id = studentperformance.student_id) and (student.teacher_id = teacher.teacher_id) and (studentperformance.theory is not null or studentperformance.performance is not null) order by performance, theory asc"; // and (student.last_name='QUIRK' || student.last_name='AGARA' || student.last_name='DIYANNI' || student.last_name='ASTI')";
 
         public SchedulerForm()
         {
@@ -269,48 +269,53 @@ namespace PPTASchedulerForm
                     }
 
                     //Check whether the judge is able to judge the current student
-                    if (student.HighestPerformanceLevel > currentJudge.JudgingLevel)
+                    //  if (student.HighestPerformanceLevel > currentJudge.JudgingLevel)
+                    if (currentJudge.JudgingLevel >= student.HighestPerformanceLevel)
                     {
-                        break;
+                        TimeSpan startTime = student.ScheduledStartTime;
+                        TimeSpan endTime = computeEndTime(student);
+
+                        if (endTime > EVENT_END_TIME)
+                        {
+                            break;
+                        }
+
+                        bool available = isAvailable(student, currentJudge, startTime, endTime);
+                        bool breakTime = true;
+
+                        if (available)
+                        {
+                            breakTime = isBreakTime(currentJudge, student, startTime, endTime);
+                        }
+
+                        if (available && !breakTime)
+                        {
+                            isScheduled = true;
+
+                            StringBuilder sb = new StringBuilder("INSERT INTO performance_schedule(teacher_id,student_id,start_time,end_time) values(");
+                            sb.AppendFormat("{0}, {1}, '{2}', '{3}')", currentJudge.ID, student.ID, startTime, endTime);
+                            string sql = sb.ToString();
+
+                            student.ScheduledStartTime = startTime;
+                            student.ScheduledEndTime = endTime;
+                            int rowsAffected = DBMySQLUtils.ExecuteQuery(sql);
+
+                            break;
+                        }
+                        else
+                        {
+                            TimeSpan originalTime = student.ScheduledStartTime;
+                            startTime = originalTime.Add(new TimeSpan(0, 15, 0));
+
+                            student.ScheduledStartTime = startTime;
+                        }
                     }
                  
-                    TimeSpan startTime = student.ScheduledStartTime;
-                    TimeSpan endTime = computeEndTime(student);
-
-                    if (endTime > EVENT_END_TIME)
-                    {
-                        break;
-                    }
-
-                    bool available = isAvailable(student, currentJudge, startTime, endTime);
-                    bool breakTime = true;
-
-                    if (available)
-                    {
-                        breakTime = isBreakTime(currentJudge, student, startTime, endTime);
-                    }
-
-                    if (available && !breakTime)
-                    {
-                        isScheduled = true;
-
-                        StringBuilder sb = new StringBuilder("INSERT INTO performance_schedule(teacher_id,student_id,start_time,end_time) values(");
-                        sb.AppendFormat("{0}, {1}, '{2}', '{3}')", currentJudge.ID, student.ID, startTime, endTime);
-                        string sql = sb.ToString();
-
-                        student.ScheduledStartTime = startTime;
-                        student.ScheduledEndTime = endTime;
-                        int rowsAffected = DBMySQLUtils.ExecuteQuery(sql);
-
-                        break;
-                    }
                     else
                     {
-                        TimeSpan originalTime = student.ScheduledStartTime;
-                        startTime = originalTime.Add(new TimeSpan(0, 15, 0));
-
-                        student.ScheduledStartTime = startTime;
+                        break;
                     }
+                   
                 }
 
                 if (isScheduled) { break; }
